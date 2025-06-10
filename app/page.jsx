@@ -25,27 +25,85 @@ const CryptoDemoClone = () => {
   const [newPeerBalance, setNewPeerBalance] = useState('');
 
   useEffect(() => {
-    const genesisBlock = {
+    // Generate genesis block hash with difficulty
+    const genesisData = {
       id: 0,
       timestamp: Date.now(),
       transactions: [],
       previousHash: '0',
-      hash: 'genesis123',
-      nonce: 0,
+      nonce: 0
+    };
+
+    // Find nonce that satisfies difficulty
+    let nonce = 0;
+    let genesisHash = '';
+    do {
+      genesisData.nonce = nonce;
+      genesisHash = generateHash(genesisData);
+      nonce++;
+    } while (!genesisHash.startsWith('000'));
+
+    const genesisBlock = {
+      ...genesisData,
+      hash: genesisHash,
       miner: 'Genesis'
     };
 
+    // Generate initial UTXOs with proper hashes
     const initialUtxos = {
       Alice: [
-        { id: 'utxo-alice-1', amount: 30, txHash: 'genesis123', outputIndex: 0, spent: false }
+        {
+          id: `utxo-alice-${Date.now()}-0`,
+          amount: 30,
+          txHash: genesisHash,
+          outputIndex: 0,
+          spent: false
+        }
       ],
       Bob: [
-        { id: 'utxo-bob-1', amount: 30, txHash: 'genesis123', outputIndex: 2, spent: false }
+        {
+          id: `utxo-bob-${Date.now()}-0`,
+          amount: 30,
+          txHash: genesisHash,
+          outputIndex: 1,
+          spent: false
+        }
       ],
       Charlie: [
-        { id: 'utxo-charlie-1', amount: 20, txHash: 'genesis123', outputIndex: 3, spent: false }
+        {
+          id: `utxo-charlie-${Date.now()}-0`,
+          amount: 20,
+          txHash: genesisHash,
+          outputIndex: 2,
+          spent: false
+        }
       ]
     };
+
+    // Create initial transactions for the genesis block
+    const genesisTransactions = Object.entries(initialUtxos).map(([user, utxos]) => ({
+      id: generateHash({
+        from: 'System',
+        to: user,
+        amount: utxos[0].amount,
+        timestamp: Date.now()
+      }),
+      from: 'System',
+      to: user,
+      amount: utxos[0].amount,
+      fee: 0,
+      timestamp: Date.now(),
+      inputs: [],
+      outputs: [{
+        recipient: user,
+        amount: utxos[0].amount,
+        utxoId: utxos[0].id
+      }],
+      status: 'confirmed'
+    }));
+
+    // Update genesis block with transactions
+    genesisBlock.transactions = genesisTransactions;
 
     setUsers(prev => ({
       Alice: { ...prev.Alice, utxos: initialUtxos.Alice },
@@ -81,7 +139,6 @@ const CryptoDemoClone = () => {
 
     const txHash = generateHash({ from: activeUser, to: recipient, amount, timestamp: Date.now() });
     
-    // Map the selected UTXOs to transaction inputs
     const inputs = selectedUtxos.map(utxo => ({
       utxoId: utxo.id,
       amount: utxo.amount,
@@ -290,6 +347,56 @@ const CryptoDemoClone = () => {
     const initialBalance = parseFloat(newPeerBalance);
     const utxoId = `utxo-${newPeerName.toLowerCase()}-${Date.now()}`;
 
+    // Create transaction for new peer
+    const newPeerTx = {
+      id: generateHash({
+        from: 'System',
+        to: newPeerName,
+        amount: initialBalance,
+        timestamp: Date.now()
+      }),
+      from: 'System',
+      to: newPeerName,
+      amount: initialBalance,
+      fee: 0,
+      timestamp: Date.now(),
+      inputs: [],
+      outputs: [{
+        recipient: newPeerName,
+        amount: initialBalance,
+        utxoId: utxoId
+      }],
+      status: 'confirmed'
+    };
+
+    // Create new block for the transaction with difficulty
+    const previousBlockHash = blockchain[blockchain.length - 1].hash;
+    const blockData = {
+      id: blockchain.length,
+      timestamp: Date.now(),
+      transactions: [newPeerTx.id],
+      previousHash: previousBlockHash,
+      nonce: 0
+    };
+
+    // Find nonce that satisfies difficulty
+    let nonce = 0;
+    let blockHash = '';
+    do {
+      blockData.nonce = nonce;
+      blockHash = generateHash(blockData);
+      nonce++;
+    } while (!blockHash.startsWith('000'));
+
+    const newBlock = {
+      ...blockData,
+      transactions: [newPeerTx],
+      hash: blockHash,
+      miner: 'System'
+    };
+
+    // Update blockchain and users
+    setBlockchain(prev => [...prev, newBlock]);
     setUsers(prev => ({
       ...prev,
       [newPeerName]: {
@@ -297,8 +404,8 @@ const CryptoDemoClone = () => {
         utxos: [{
           id: utxoId,
           amount: initialBalance,
-          txHash: 'genesis123',
-          outputIndex: Object.keys(prev).length,
+          txHash: newPeerTx.id,
+          outputIndex: 0,
           spent: false
         }]
       }
@@ -315,7 +422,7 @@ const CryptoDemoClone = () => {
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-2 flex items-center justify-center gap-3">
             <Coins className="text-yellow-400" />
-            Crypto UTXO Demo
+            Crypto Demo
           </h1>
           <p className="text-gray-300">Experience blockchain transactions with UTXO model</p>
         </div>
